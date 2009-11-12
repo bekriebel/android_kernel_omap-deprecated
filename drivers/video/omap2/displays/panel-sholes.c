@@ -209,7 +209,10 @@ static void sholes_panel_disable(struct omap_dss_device *dssdev)
 	DBG("sholes_panel_ctrl_disable\n");
 	atomic_set(&sholes_data->state, PANEL_OFF);
 	wake_up(&sholes_data->wait);
+	/* drop the bus lock so the work can complete */
+	dsi_bus_unlock();
 	cancel_work_sync(&sholes_data->work);
+	dsi_bus_lock();
 	DBG("panel off\n");
 
 	data[0] = EDISCO_CMD_SET_DISPLAY_OFF;
