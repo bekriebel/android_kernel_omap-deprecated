@@ -1886,6 +1886,7 @@ static ssize_t audio_write(struct file *file, const char *buffer, size_t count,
 	int minor = MINOR(inode->i_rdev);
 	struct audio_stream *str = (minor == state.dev_dsp) ?
 			state.stdac_out_stream : state.codec_out_stream;
+	unsigned long flags;
 
 	mutex_lock(&audio_lock);
 
@@ -1981,12 +1982,23 @@ static ssize_t audio_write(struct file *file, const char *buffer, size_t count,
 
 		buf->offset = 0;
 
+		/*
+		 * HACKHACKHACK
+		 *
+		 * Disabling IRQs works around a race accessing str between the
+		 * following code and the interrupt handler.  This should be
+		 * replaced with propper locking around access to any
+		 * audio_stream throughout the dirver.
+		 */
+
+		local_irq_save(flags);
 		if (++str->usr_head >= str->nbfrags)
 			str->usr_head = 0;
 
 		str->pending_frags++;
 
 		ret = audio_process_buf(str, inode);
+		local_irq_restore(flags);
 	}
 
 	if (buffer - buffer0)
