@@ -88,6 +88,10 @@ typedef struct _SYS_DATA_TAG_
 
     IMG_CHAR                    *pszVersionString;          
 	PVRSRV_EVENTOBJECT			*psGlobalEventObject;			
+
+#if defined(SUPPORT_CPU_CACHED_BUFFERS)
+	IMG_BOOL					bFlushCPUCache;				
+#endif
 } SYS_DATA;
 
 

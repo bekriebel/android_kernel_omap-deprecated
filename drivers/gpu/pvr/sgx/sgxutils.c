@@ -143,9 +143,7 @@ static INLINE SGXMKIF_COMMAND * SGXAcquireKernelCCBSlot(PVRSRV_SGX_CCB_INFO *psC
 		OSWaitus(MAX_HW_TIME_US/WAIT_TRY_COUNT);
 	} END_LOOP_UNTIL_TIMEOUT();
 
-	if(((*psCCB->pui32WriteOffset + 1) & 255) != *psCCB->pui32ReadOffset)
-		return &psCCB->psCommands[*psCCB->pui32WriteOffset];
-
+	
 	return IMG_NULL;
 }
 
@@ -196,6 +194,20 @@ PVRSRV_ERROR SGXScheduleCCBCommand(PVRSRV_SGXDEV_INFO 	*psDevInfo,
 		eError = PVRSRV_ERROR_GENERIC;
 		goto Exit;		
 	}
+
+#if defined(SUPPORT_CPU_CACHED_BUFFERS)
+	{
+		SYS_DATA *psSysData;
+
+		SysAcquireData(&psSysData);
+
+		if (psSysData->bFlushCPUCache)
+		{
+			OSFlushCPUCache();
+			psSysData->bFlushCPUCache = IMG_FALSE;
+		}
+	}
+#endif 
 
 	psSGXCommand->ui32ServiceAddress = psDevInfo->aui32HostKickAddr[eCmdType];	 
 
@@ -856,12 +868,7 @@ PVRSRV_ERROR SGX2DQueryBlitsCompleteKM(PVRSRV_SGXDEV_INFO	*psDevInfo,
 		OSWaitus(MAX_HW_TIME_US/WAIT_TRY_COUNT);
 	} END_LOOP_UNTIL_TIMEOUT();
 
-	if(SGX2DQuerySyncOpsComplete(psSyncInfo, ui32ReadOpsPending, ui32WriteOpsPending))
-	{
-		PVR_DPF((PVR_DBG_CALLTRACE, "SGX2DQueryBlitsCompleteKM: Wait over.  Blits complete."));
-		return PVRSRV_OK;
-	}
-
+	
 	PVR_DPF((PVR_DBG_ERROR,"SGX2DQueryBlitsCompleteKM: Timed out. Ops pending."));
 
 #if defined(DEBUG)

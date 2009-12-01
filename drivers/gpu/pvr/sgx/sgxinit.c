@@ -365,7 +365,7 @@ PVRSRV_ERROR SGXInitialise(PVRSRV_SGXDEV_INFO	*psDevInfo)
 					   PVRSRV_USSE_EDM_INIT_COMPLETE,
 					   PVRSRV_USSE_EDM_INIT_COMPLETE,
 					   MAX_HW_TIME_US/WAIT_TRY_COUNT,
-					   1000) != PVRSRV_OK)
+					   WAIT_TRY_COUNT) != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "SGXInitialise: Wait for uKernel initialisation failed"));
 		PVR_DBG_BREAK;
@@ -815,6 +815,7 @@ static PVRSRV_ERROR DevDeInitSGX (IMG_VOID *pvDeviceNode)
 	return PVRSRV_OK;
 }
 
+
 IMG_VOID SGXDumpDebugInfo (PVRSRV_DEVICE_NODE *psDeviceNode,
 						   IMG_BOOL			  bDumpSGXRegs)
 {
@@ -826,6 +827,9 @@ IMG_VOID SGXDumpDebugInfo (PVRSRV_DEVICE_NODE *psDeviceNode,
 		PVR_DPF((PVR_DBG_ERROR,"SGX Register Base Address (Linear):   0x%08X", psDevInfo->pvRegsBaseKM));
 		PVR_DPF((PVR_DBG_ERROR,"SGX Register Base Address (Physical): 0x%08X", psDevInfo->sRegsPhysBase));
 
+		
+		
+		
 		ui32RegVal = OSReadHWReg(psDevInfo->pvRegsBaseKM, EUR_CR_EVENT_STATUS);
 		if (ui32RegVal & (EUR_CR_EVENT_STATUS_DPM_OUT_OF_MEMORY_GBL_MASK | EUR_CR_EVENT_STATUS_DPM_OUT_OF_MEMORY_MT_MASK))
 		{
@@ -839,6 +843,11 @@ IMG_VOID SGXDumpDebugInfo (PVRSRV_DEVICE_NODE *psDeviceNode,
 		ui32RegVal = OSReadHWReg(psDevInfo->pvRegsBaseKM, EUR_CR_BIF_CTRL);
 		PVR_LOG(("EUR_CR_BIF_CTRL:         %x", ui32RegVal));
 
+		#if defined(EUR_CR_BIF_BANK0)
+		ui32RegVal = OSReadHWReg(psDevInfo->pvRegsBaseKM, EUR_CR_BIF_BANK0);
+		PVR_LOG(("EUR_CR_BIF_BANK0:        %x", ui32RegVal));
+		#endif
+
 		ui32RegVal = OSReadHWReg(psDevInfo->pvRegsBaseKM, EUR_CR_BIF_INT_STAT);
 		PVR_LOG(("EUR_CR_BIF_INT_STAT:     %x", ui32RegVal));
 
@@ -850,6 +859,13 @@ IMG_VOID SGXDumpDebugInfo (PVRSRV_DEVICE_NODE *psDeviceNode,
 
 		ui32RegVal = OSReadHWReg(psDevInfo->pvRegsBaseKM, EUR_CR_CLKGATECTL);
 		PVR_LOG(("EUR_CR_CLKGATECTL:       %x", ui32RegVal));
+
+		#if defined(EUR_CR_PDS_PC_BASE)
+		ui32RegVal = OSReadHWReg(psDevInfo->pvRegsBaseKM, EUR_CR_PDS_PC_BASE);
+		PVR_LOG(("EUR_CR_PDS_PC_BASE:      %x", ui32RegVal));
+		#endif
+
+		
 	}
 			
 	#if defined(PVRSRV_USSE_EDM_STATUS_DEBUG)
@@ -865,6 +881,8 @@ IMG_VOID SGXDumpDebugInfo (PVRSRV_DEVICE_NODE *psDeviceNode,
 		PVR_LOG(("Last SGX microkernel status code: 0x%x", ui32LastStatusCode));
 		
 		#if defined(PVRSRV_DUMP_MK_TRACE)
+		
+
 		{
 			IMG_UINT32	ui32LoopCounter;
 			
@@ -875,15 +893,17 @@ IMG_VOID SGXDumpDebugInfo (PVRSRV_DEVICE_NODE *psDeviceNode,
 				IMG_UINT32	*pui32BufPtr;
 				pui32BufPtr = pui32MKTraceBuffer +
 								(((ui32WriteOffset + ui32LoopCounter) % SGXMK_TRACE_BUFFER_SIZE) * 4);
-				PVR_LOG(("%8.8lX %8.8lX %8.8lX %8.8lX",
+				PVR_LOG(("(MKT%u) %8.8lX %8.8lX %8.8lX %8.8lX", ui32LoopCounter,
 						 pui32BufPtr[2], pui32BufPtr[3], pui32BufPtr[1], pui32BufPtr[0]));
 			}
 		}
-		#endif
+		#endif 
 	}
-	#endif
+	#endif 
 
 	{
+		
+
 		IMG_UINT32	*pui32HostCtlBuffer = (IMG_UINT32 *)psDevInfo->psSGXHostCtl;
 		IMG_UINT32	ui32LoopCounter;
 
@@ -900,6 +920,8 @@ IMG_VOID SGXDumpDebugInfo (PVRSRV_DEVICE_NODE *psDeviceNode,
 	}
 
 	{
+		
+
 		IMG_UINT32	*pui32TA3DCtlBuffer = psDevInfo->psKernelSGXTA3DCtlMemInfo->pvLinAddrKM;
 		IMG_UINT32	ui32LoopCounter;
 
@@ -914,13 +936,16 @@ IMG_VOID SGXDumpDebugInfo (PVRSRV_DEVICE_NODE *psDeviceNode,
 					pui32TA3DCtlBuffer[ui32LoopCounter + 2], pui32TA3DCtlBuffer[ui32LoopCounter + 3]));
 		}
 	}
+
+	QueueDumpDebugInfo();
 }
+
 
 #if defined(SYS_USING_INTERRUPTS) || defined(SUPPORT_HW_RECOVERY)
 static
 IMG_VOID HWRecoveryResetSGX (PVRSRV_DEVICE_NODE *psDeviceNode,
-									IMG_UINT32 			ui32Component,
-									IMG_UINT32			ui32CallerID)
+							 IMG_UINT32 		ui32Component,
+							 IMG_UINT32			ui32CallerID)
 {
 	PVRSRV_ERROR		eError;
 	PVRSRV_SGXDEV_INFO	*psDevInfo = (PVRSRV_SGXDEV_INFO*)psDeviceNode->pvDevice;
@@ -1686,22 +1711,33 @@ PVRSRV_ERROR SGXGetMiscInfoUkernel(PVRSRV_SGXDEV_INFO	*psDevInfo,
 
 	if (eError != PVRSRV_OK)
 	{
-		PVR_DPF((PVR_DBG_ERROR, "SGXGetMiscInfoKM: SGXScheduleCCBCommandKM failed."));
+		PVR_DPF((PVR_DBG_ERROR, "SGXGetMiscInfoUkernel: SGXScheduleCCBCommandKM failed."));
 		return eError;
 	}
 
 	
 #if !defined(NO_HARDWARE)
-	LOOP_UNTIL_TIMEOUT(MAX_HW_TIME_US)
 	{
-		if ((psSGXMiscInfoInt->ui32MiscInfoFlags & PVRSRV_USSE_MISCINFO_READY) != 0)
-			break;
-	} END_LOOP_UNTIL_TIMEOUT();
+		IMG_BOOL bExit;
 
+		bExit = IMG_FALSE;
+		LOOP_UNTIL_TIMEOUT(MAX_HW_TIME_US)
+		{
+			if ((psSGXMiscInfoInt->ui32MiscInfoFlags & PVRSRV_USSE_MISCINFO_READY) != 0)
+			{
+				bExit = IMG_TRUE;
+				break;
+			}
+		} END_LOOP_UNTIL_TIMEOUT();
 
-	if (!(psSGXMiscInfoInt->ui32MiscInfoFlags & PVRSRV_USSE_MISCINFO_READY))
-		return PVRSRV_ERROR_TIMEOUT;
-#endif
+		
+		if (!bExit)
+		{
+			PVR_DPF((PVR_DBG_ERROR, "SGXGetMiscInfoUkernel: Timeout occurred waiting for misc info."));
+			return PVRSRV_ERROR_TIMEOUT;
+		}
+	}
+#endif 
 
 	return PVRSRV_OK;
 }
@@ -1807,10 +1843,17 @@ PVRSRV_ERROR SGXGetMiscInfoKM(PVRSRV_SGXDEV_INFO	*psDevInfo,
 
 		case SGX_MISC_INFO_REQUEST_SGXREV:
 		{
+			PVRSRV_ERROR eError;
 			PVRSRV_SGX_MISCINFO_FEATURES		*psSGXFeatures;
 			PPVRSRV_KERNEL_MEM_INFO	psMemInfo = psDevInfo->psKernelSGXMiscMemInfo;
 
-			SGXGetMiscInfoUkernel(psDevInfo, psDeviceNode);
+			eError = SGXGetMiscInfoUkernel(psDevInfo, psDeviceNode);
+			if(eError != PVRSRV_OK)
+			{
+				PVR_DPF((PVR_DBG_ERROR, "An error occurred in SGXGetMiscInfoUkernel: %d\n",
+						eError));
+				return eError;
+			}
 			psSGXFeatures = &((PVRSRV_SGX_MISCINFO_INFO*)(psMemInfo->pvLinAddrKM))->sSGXFeatures;
 
 			
@@ -1856,6 +1899,7 @@ PVRSRV_ERROR SGXGetMiscInfoKM(PVRSRV_SGXDEV_INFO	*psDevInfo,
 #if defined(SUPPORT_SGX_EDM_MEMORY_DEBUG)
 		case SGX_MISC_INFO_REQUEST_MEMREAD:
 		{
+			PVRSRV_ERROR eError;
 			PPVRSRV_KERNEL_MEM_INFO	psMemInfo = psDevInfo->psKernelSGXMiscMemInfo;
 			PVRSRV_SGX_MISCINFO_FEATURES		*psSGXFeatures;
 			PVRSRV_SGX_MISCINFO_MEMREAD			*psSGXMemReadData;	
@@ -1886,7 +1930,13 @@ PVRSRV_ERROR SGXGetMiscInfoKM(PVRSRV_SGXDEV_INFO	*psDevInfo,
 			}
 
 			
-			SGXGetMiscInfoUkernel(psDevInfo, psDeviceNode);
+			eError = SGXGetMiscInfoUkernel(psDevInfo, psDeviceNode);
+			if(eError != PVRSRV_OK)
+			{
+				PVR_DPF((PVR_DBG_ERROR, "An error occurred in SGXGetMiscInfoUkernel: %d\n",
+						eError));
+				return eError;
+			}
 			psSGXFeatures = &((PVRSRV_SGX_MISCINFO_INFO*)(psMemInfo->pvLinAddrKM))->sSGXFeatures;
 
 #if !defined SGX_FEATURE_MULTIPLE_MEM_CONTEXTS
@@ -1980,14 +2030,42 @@ PVRSRV_ERROR SGXGetMiscInfoKM(PVRSRV_SGXDEV_INFO	*psDevInfo,
 			return PVRSRV_OK;
 		}
 #endif 
-#if defined(PVRSRV_DUMP_MK_TRACE)
-	case SGX_MISC_INFO_DUMP_MK_TRACE:
-	{
-		SGXDumpDebugInfo(psDeviceNode, IMG_FALSE);
-		BUG();
-		return PVRSRV_OK;
-	}
-#endif /* PVRSRV_DUMP_MK_TRACE */
+#if defined(SUPPORT_CPU_CACHED_BUFFERS)
+		case SGX_MISC_INFO_FLUSH_CPUCACHE_NOW:
+		{
+			SYS_DATA *psSysData;
+
+			SysAcquireData(&psSysData);
+
+			
+			OSFlushCPUCache();
+			psSysData->bFlushCPUCache = IMG_FALSE;
+
+			return PVRSRV_OK;
+		}
+		case SGX_MISC_INFO_FLUSH_CPUCACHE_QUEUE:
+		{
+			SYS_DATA *psSysData;
+
+			SysAcquireData(&psSysData);
+
+			
+			psSysData->bFlushCPUCache = IMG_TRUE;
+
+			return PVRSRV_OK;
+		}
+#endif 
+
+		case SGX_MISC_INFO_DUMP_DEBUG_INFO:
+		{
+			PVR_LOG(("User requested SGX debug info"));
+			
+			
+			SGXDumpDebugInfo(psDeviceNode, IMG_FALSE);
+			BUG();
+
+			return PVRSRV_OK;
+		}
 
 		default:
 		{

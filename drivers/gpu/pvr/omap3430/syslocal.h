@@ -93,7 +93,7 @@ typedef struct _SYS_SPECIFIC_DATA_TAG_
 	IMG_BOOL	bSysClocksOneTimeInit;
 	IMG_BOOL	bConstraintNotificationsEnabled;
 	atomic_t	sSGXClocksEnabled;
-	struct mutex	sPowerLock;
+	struct mutex sPowerLock;
 	atomic_t	sPowerLockCPU;
 	spinlock_t	sNotifyLock;
 	atomic_t	sNotifyLockCPU;
