@@ -44,6 +44,10 @@ typedef struct
 
 	
 	IMG_HANDLE hBlockAlloc;
+
+#if defined(SUPPORT_DRI_DRM_EXT)
+	IMG_PVOID pPriv;	
+#endif
 }
 PVRSRV_FILE_PRIVATE_DATA;
 

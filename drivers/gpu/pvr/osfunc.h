@@ -420,6 +420,8 @@ PVRSRV_ERROR OSPCIResumeDev(PVRSRV_PCI_DEV_HANDLE hPVRPCI);
 
 PVRSRV_ERROR OSScheduleMISR(IMG_VOID *pvSysData);
 
+IMG_VOID OSPanic(IMG_VOID);
+
 IMG_BOOL OSProcHasPrivSrvInit(IMG_VOID);
 
 typedef enum _img_verify_test

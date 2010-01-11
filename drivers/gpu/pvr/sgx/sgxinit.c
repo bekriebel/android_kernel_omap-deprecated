@@ -893,7 +893,7 @@ IMG_VOID SGXDumpDebugInfo (PVRSRV_DEVICE_NODE *psDeviceNode,
 				IMG_UINT32	*pui32BufPtr;
 				pui32BufPtr = pui32MKTraceBuffer +
 								(((ui32WriteOffset + ui32LoopCounter) % SGXMK_TRACE_BUFFER_SIZE) * 4);
-				PVR_LOG(("(MKT%u) %8.8lX %8.8lX %8.8lX %8.8lX", ui32LoopCounter,
+				PVR_LOG(("(MKT%u) %08X %08X %08X %08X", ui32LoopCounter,
 						 pui32BufPtr[2], pui32BufPtr[3], pui32BufPtr[1], pui32BufPtr[0]));
 			}
 		}
@@ -913,7 +913,7 @@ IMG_VOID SGXDumpDebugInfo (PVRSRV_DEVICE_NODE *psDeviceNode,
 			 ui32LoopCounter < sizeof(*psDevInfo->psSGXHostCtl) / sizeof(*pui32HostCtlBuffer);
 			 ui32LoopCounter += 4)
 		{
-			PVR_LOG(("\t0x%lX: 0x%8.8lX 0x%8.8lX 0x%8.8lX 0x%8.8lX", ui32LoopCounter * sizeof(*pui32HostCtlBuffer),
+			PVR_LOG(("\t0x%X: 0x%08X 0x%08X 0x%08X 0x%08X", ui32LoopCounter * sizeof(*pui32HostCtlBuffer),
 					pui32HostCtlBuffer[ui32LoopCounter + 0], pui32HostCtlBuffer[ui32LoopCounter + 1],
 					pui32HostCtlBuffer[ui32LoopCounter + 2], pui32HostCtlBuffer[ui32LoopCounter + 3]));
 		}
@@ -931,7 +931,7 @@ IMG_VOID SGXDumpDebugInfo (PVRSRV_DEVICE_NODE *psDeviceNode,
 			 ui32LoopCounter < psDevInfo->psKernelSGXTA3DCtlMemInfo->ui32AllocSize / sizeof(*pui32TA3DCtlBuffer);
 			 ui32LoopCounter += 4)
 		{
-			PVR_LOG(("\t0x%lX: 0x%8.8lX 0x%8.8lX 0x%8.8lX 0x%8.8lX", ui32LoopCounter * sizeof(*pui32TA3DCtlBuffer),
+			PVR_LOG(("\t0x%X: 0x%08X 0x%08X 0x%08X 0x%08X", ui32LoopCounter * sizeof(*pui32TA3DCtlBuffer),
 					pui32TA3DCtlBuffer[ui32LoopCounter + 0], pui32TA3DCtlBuffer[ui32LoopCounter + 1],
 					pui32TA3DCtlBuffer[ui32LoopCounter + 2], pui32TA3DCtlBuffer[ui32LoopCounter + 3]));
 		}
@@ -1468,6 +1468,15 @@ PVRSRV_ERROR SGXGetClientInfoKM(IMG_HANDLE					hDevCookie,
 	
 	return PVRSRV_OK;
 }
+
+
+IMG_VOID SGXPanic(PVRSRV_DEVICE_NODE	*psDeviceNode)
+{
+	PVR_LOG(("SGX panic"));
+	SGXDumpDebugInfo(psDeviceNode, IMG_FALSE);
+	OSPanic();
+}
+
 
 PVRSRV_ERROR SGXDevInitCompatCheck(PVRSRV_DEVICE_NODE *psDeviceNode)
 {
@@ -2062,7 +2071,15 @@ PVRSRV_ERROR SGXGetMiscInfoKM(PVRSRV_SGXDEV_INFO	*psDevInfo,
 			
 			
 			SGXDumpDebugInfo(psDeviceNode, IMG_FALSE);
-			BUG();
+
+			return PVRSRV_OK;
+		}
+
+		case SGX_MISC_INFO_PANIC:
+		{
+			PVR_LOG(("User requested SGX panic"));
+
+			SGXPanic(psDeviceNode);
 
 			return PVRSRV_OK;
 		}

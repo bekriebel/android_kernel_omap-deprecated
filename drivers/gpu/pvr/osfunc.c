@@ -952,6 +952,11 @@ PVRSRV_ERROR OSScheduleMISR(IMG_VOID *pvSysData)
 
 #endif 
 
+IMG_VOID OSPanic(IMG_VOID)
+{
+	BUG();
+}
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,22))
 #define	OS_TAS(p)	xchg((p), 1)
 #else

@@ -319,6 +319,8 @@ PVRSRV_ERROR SGXPostClockSpeedChange(IMG_HANDLE				hDevHandle,
 									 IMG_BOOL				bIdleDevice,
 									 PVRSRV_DEV_POWER_STATE	eCurrentPowerState);
 
+IMG_VOID SGXPanic(PVRSRV_DEVICE_NODE	*psDeviceNode);
+
 PVRSRV_ERROR SGXDevInitCompatCheck(PVRSRV_DEVICE_NODE *psDeviceNode);
 
 #if defined(SGX_DYNAMIC_TIMING_INFO)
