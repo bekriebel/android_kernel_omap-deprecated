@@ -1874,6 +1874,12 @@ static int omap2_dma_handle_ch(int ch)
 			dma_write(ccr, CCR(ch));
 			dma_chan[ch].flags &= ~OMAP_DMA_ACTIVE;
 		}
+		/* TEMPORARY DEBUG HACK */
+		if (dma_chan[ch].dev_id != 0) {
+			printk("got a dma error -- going to panic\n");
+			BUG();
+		}
+		/* END TEMPORARY HACK */
 	}
 	if (unlikely(status & OMAP2_DMA_SECURE_ERR_IRQ))
 		printk(KERN_INFO "DMA secure error with device %d\n",
