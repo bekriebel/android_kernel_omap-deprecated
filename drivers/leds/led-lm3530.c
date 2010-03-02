@@ -178,80 +178,43 @@ static void ld_lm3530_brightness_set(struct led_classdev *led_cdev,
 {
 	int brightness = 0;
 	int error = 0;
-	int step = 0;
+	int old_led_on;
 	struct lm3530_data *als_data =
 	    container_of(led_cdev, struct lm3530_data, led_dev);
 
-	/* Get the number of steps to zero brightness */
-	if (als_data->zone == 0)
-		step = als_data->als_pdata->zone_target_0;
-	else if (als_data->zone == 1)
-		step = als_data->als_pdata->zone_target_1;
-	else if (als_data->zone == 2)
-		step = als_data->als_pdata->zone_target_2;
-	else if (als_data->zone == 3)
-		step = als_data->als_pdata->zone_target_3;
-	else if (als_data->zone == 4)
-		step = als_data->als_pdata->zone_target_4;
+	if (als_data->mode == AUTOMATIC)
+		brightness = als_data->als_pdata->gen_config;
+	else
+		brightness = als_data->als_pdata->manual_current;
 
 	if (value == LED_OFF) {
-		error = lm3530_write_reg(als_data, LM3530_BRIGHTNESS_RAMP_RATE,
-			     0x03);
-		if (error != 0)
-			pr_err("%s:Unable to set the ramp rate: %d\n",
-			       __func__, error);
-
 		als_data->led_on = 0;
-		brightness = als_data->als_pdata->gen_config &
-			LD_LM3530_LAST_BRIGHTNESS_MASK;
-
+		brightness &= LD_LM3530_LAST_BRIGHTNESS_MASK;
 		if (lm3530_write_reg(als_data, LM3530_GEN_CONFIG, brightness)) {
 			pr_err("%s:writing failed while setting brightness:%d\n",
 				__func__, error);
 			return;
 		}
-		if (als_data->mode == AUTOMATIC)
-			msleep(step * 4);
 	} else {
-		switch (als_data->mode) {
-		case AUTOMATIC:
-			if (als_data->led_on == 0) {
-				brightness = als_data->als_pdata->gen_config | 0x01;
-				if (lm3530_write_reg(als_data, LM3530_GEN_CONFIG, brightness)) {
-					pr_err("%s:writing failed while setting brightness:%d\n",
-					__func__, error);
-					return;
-				}
-				/* Wait until the IC has a chance to turn on
-				and set the brightness level */
-				msleep(5);
-				error = lm3530_write_reg(als_data, LM3530_BRIGHTNESS_RAMP_RATE,
-					als_data->als_pdata->brightness_ramp);
-				if (error != 0)
-					pr_err("%s:Unable to set the ramp rate: %d\n",
-						__func__, error);
-
-				als_data->led_on = 1;
-
-			}
-			break;
-		case MANUAL:
-			error = lm3530_write_reg(als_data,
-						 LM3530_BRIGHTNESS_CTRL_REG,
-						 value / 2);
-			if (error) {
+		brightness |= 0x01;
+		if (lm3530_write_reg(als_data, LM3530_GEN_CONFIG, brightness)) {
+			pr_err("%s:writing failed while setting brightness:%d\n",
+				__func__, error);
+			return;
+		}
+		if (lm3530_write_reg(als_data, LM3530_BRIGHTNESS_CTRL_REG,
+			value / 2)) {
 				pr_err("%s:Failed to set brightness:%d\n",
-					__func__, error);
-				return;
-			}
-			brightness = als_data->als_pdata->manual_current;
-			if (lm3530_write_reg(als_data, LM3530_GEN_CONFIG, brightness)) {
-				pr_err("%s:writing failed while setting brightness:%d\n",
-					__func__, error);
-				return;
-			}
-			als_data->last_requested_brightness = value;
-			break;
+				__func__, error);
+			return;
+		}
+		als_data->last_requested_brightness = value;
+		old_led_on = als_data->led_on;
+		als_data->led_on = 1;
+
+		if (als_data->mode != MANUAL && old_led_on == 0) {
+			disable_irq(als_data->client->irq);
+			queue_work(als_data->working_queue, &als_data->wq);
 		}
 	}
 }
@@ -273,53 +236,55 @@ static ssize_t ld_lm3530_als_store(struct device *dev, struct device_attribute
 	struct i2c_client *client = container_of(dev->parent, struct i2c_client,
 						 dev);
 	struct lm3530_data *als_data = i2c_get_clientdata(client);
+	int config;
 	unsigned long mode_value;
+	uint8_t brightness = 0;
 
 	error = strict_strtoul(buf, 10, &mode_value);
 
 	if (error < 0)
 		return -1;
+	if (mode_value != MANUAL
+		    && mode_value != AUTOMATIC
+		    && mode_value != MANUAL_SENSOR)
+		return -1;
 
-	if (mode_value >= AUTOMATIC) {
+	if (mode_value == AUTOMATIC)
+		brightness = als_data->als_pdata->gen_config;
+	else
+		brightness = als_data->als_pdata->manual_current;
 
+	if (mode_value == AUTOMATIC) {
 		ld_lm3530_init_registers(als_data);
 		error = lm3530_write_reg(als_data, LM3530_GEN_CONFIG,
-					 als_data->als_pdata->gen_config);
+					 brightness);
 		if (error) {
 			pr_err("%s:Initialize Gen Config Reg failed %d\n",
 			       __func__, error);
 			als_data->mode = -1;
 			return -1;
 		}
-		error = lm3530_write_reg(als_data,
-				LM3530_BRIGHTNESS_RAMP_RATE,
-				als_data->als_pdata->brightness_ramp);
-		if (error != 0)
-			pr_err("%s:Unable to set the ramp rate: %d\n",
-				__func__, error);
-
 		als_data->mode = AUTOMATIC;
-		disable_irq(als_data->client->irq);
-		queue_work(als_data->working_queue, &als_data->wq);
-
 	} else {
-		als_data->mode = MANUAL;
-
-		error = lm3530_write_reg(als_data, LM3530_ALS_CONFIG,
-			LM3530_MANUAL_VALUE);
+		als_data->mode = mode_value;
+		config = LM3530_MANUAL_VALUE;
+		if (mode_value != MANUAL)
+			config |= LM3530_SENSOR_ENABLE;
+		error = lm3530_write_reg(als_data, LM3530_ALS_CONFIG, config);
 		if (error) {
 			pr_err("%s:Failed to set manual mode:%d\n",
 			       __func__, error);
 			return -1;
 		}
 
-		lm3530_write_reg(als_data, LM3530_ALS_RESISTOR_SELECT,
-			0x00);
-		error = lm3530_write_reg(als_data, LM3530_BRIGHTNESS_RAMP_RATE,
-			     0x00);
-		if (error != 0)
-			pr_err("%s:Unable to set the ramp rate: %d\n",
-			       __func__, error);
+		if (lm3530_write_reg(als_data, LM3530_GEN_CONFIG, brightness)) {
+			pr_err("%s:writing failed while setting brightness:%d\n",
+				__func__, error);
+			return -1;
+		}
+
+		config = (mode_value == MANUAL ? 0 : als_data->als_pdata->als_resistor_sel);
+		lm3530_write_reg(als_data, LM3530_ALS_RESISTOR_SELECT, config);
 
 		error = lm3530_write_reg(als_data,
 					 LM3530_BRIGHTNESS_CTRL_REG,
@@ -331,6 +296,12 @@ static ssize_t ld_lm3530_als_store(struct device *dev, struct device_attribute
 			return -1;
 		}
 	}
+
+	if (mode_value != MANUAL) {
+		disable_irq(als_data->client->irq);
+		queue_work(als_data->working_queue, &als_data->wq);
+	}
+
 	return als_data->mode;
 }
 
@@ -751,29 +722,14 @@ static int lm3530_suspend(struct i2c_client *client, pm_message_t mesg)
 
 static int lm3530_resume(struct i2c_client *client)
 {
-	uint8_t zone_dump;
-	int ret;
 	struct lm3530_data *als_data = i2c_get_clientdata(client);
 
 	if (lm3530_debug)
 		pr_info("%s: Resuming\n", __func__);
 
-	ret = lm3530_read_reg(als_data,
-			      LM3530_ALS_ZONE_REG, &zone_dump);
-	if (ret)
-		pr_info("%s: Could not read out of suspend\n", __func__);
-
 	/* Work around a HW issue that the HW will not generate an
 	interrupt when enabled */
-	if ((zone_dump & LM3530_ALS_READ_MASK) == 0) {
-		input_event(als_data->idev, EV_MSC, MSC_RAW, 10);
-		input_event(als_data->idev, EV_LED, LED_MISC,
-			als_data->lux_passed_value[0].lux_value);
-		input_sync(als_data->idev);
-		als_data->zone = 0;
-	}
-
-	enable_irq(als_data->client->irq);
+	queue_work(als_data->working_queue, &als_data->wq);
 
 	return 0;
 }

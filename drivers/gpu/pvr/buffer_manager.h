@@ -187,8 +187,8 @@ BM_ContiguousStatistics (IMG_UINT32 uFlags,
                          IMG_UINT32 *pAvailableBytes);
 
 
-PVRSRV_ERROR BM_GetPhysPageAddr(PVRSRV_KERNEL_MEM_INFO *psMemInfo, 
-								IMG_DEV_VIRTADDR sDevVPageAddr,  
+IMG_VOID BM_GetPhysPageAddr(PVRSRV_KERNEL_MEM_INFO *psMemInfo,
+								IMG_DEV_VIRTADDR sDevVPageAddr,
 								IMG_DEV_PHYADDR *psDevPAddr);
 
 PVRSRV_ERROR BM_GetHeapInfo(IMG_HANDLE hDevMemHeap, 

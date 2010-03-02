@@ -34,6 +34,9 @@
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,22))
 #include <asm/system.h>
 #endif
+#if defined(SUPPORT_CPU_CACHED_BUFFERS)
+#include <asm/cacheflush.h>
+#endif
 #include <linux/mm.h>
 #include <linux/pagemap.h>
 #include <linux/hugetlb.h> 
@@ -211,6 +214,14 @@ OSAllocPages_Impl(IMG_UINT32 ui32AllocFlags,
             *phOSMemHandle = (IMG_HANDLE)0;
             return PVRSRV_ERROR_INVALID_PARAMS;
     }
+
+#if defined(SUPPORT_CACHEFLUSH_ON_ALLOC)
+    
+    if(ui32AllocFlags & (PVRSRV_HAP_WRITECOMBINE | PVRSRV_HAP_UNCACHED))
+    {
+        OSFlushCPUCache();
+    }
+#endif 
 
     *ppvCpuVAddr = LinuxMemAreaToCpuVAddr(psLinuxMemArea);
     *phOSMemHandle = psLinuxMemArea;
@@ -940,6 +951,11 @@ PVRSRV_ERROR OSScheduleMISR(IMG_VOID *pvSysData)
 #endif 
 
 #endif 
+
+IMG_VOID OSPanic(IMG_VOID)
+{
+	BUG();
+}
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,22))
 #define	OS_TAS(p)	xchg((p), 1)
@@ -1683,7 +1699,7 @@ typedef struct TIMER_CALLBACK_DATA_TAG
     struct timer_list	sTimer;
     IMG_UINT32		ui32Delay;
     IMG_BOOL		bActive;
-    struct work_struct	work;
+	struct work_struct work;
 }TIMER_CALLBACK_DATA;
 
 static TIMER_CALLBACK_DATA sTimers[OS_MAX_TIMERS];
@@ -1692,22 +1708,22 @@ static spinlock_t sTimerStructLock = SPIN_LOCK_UNLOCKED;
 
 static void timer_worker(struct work_struct *work)
 {
-    TIMER_CALLBACK_DATA *psTimerCBData = container_of(work, TIMER_CALLBACK_DATA, work);
-    
-    if (!psTimerCBData->bActive)
-        return;
+	TIMER_CALLBACK_DATA *psTimerCBData =
+		container_of(work, TIMER_CALLBACK_DATA, work);
 
-    
-    psTimerCBData->pfnTimerFunc(psTimerCBData->pvData);
-    
-    
-    mod_timer(&psTimerCBData->sTimer, psTimerCBData->ui32Delay + jiffies);
+	if (psTimerCBData->bActive)
+	{
+		/* call timer callback */
+		psTimerCBData->pfnTimerFunc(psTimerCBData->pvData);
+
+		/* reset timer */
+		mod_timer(&psTimerCBData->sTimer, psTimerCBData->ui32Delay + jiffies);
+	}
 }
 
 static IMG_VOID OSTimerCallbackWrapper(IMG_UINT32 ui32Data)
 {
-	TIMER_CALLBACK_DATA	*psTimerCBData = (TIMER_CALLBACK_DATA*)ui32Data;
-
+    TIMER_CALLBACK_DATA	*psTimerCBData = (TIMER_CALLBACK_DATA*)ui32Data;
 	schedule_work(&psTimerCBData->work);
 }
 
@@ -1748,9 +1764,9 @@ IMG_HANDLE OSAddTimer(PFN_TIMER_FUNC pfnTimerFunc, IMG_VOID *pvData, IMG_UINT32 
     psTimerCBData->pvData = pvData;
     psTimerCBData->bActive = IMG_FALSE;
     
-    
-
     INIT_WORK(&psTimerCBData->work, timer_worker);
+
+
 
     psTimerCBData->ui32Delay = ((HZ * ui32MsTimeout) < 1000)
                                 ?	1
@@ -1793,7 +1809,7 @@ PVRSRV_ERROR OSRemoveTimer (IMG_HANDLE hTimer)
 PVRSRV_ERROR OSEnableTimer (IMG_HANDLE hTimer)
 {
     TIMER_CALLBACK_DATA *psTimerCBData = GetTimerStructure(hTimer);
-    int ret;
+	int ret;
 
     PVR_ASSERT(psTimerCBData->bInUse);
     PVR_ASSERT(!psTimerCBData->bActive);
@@ -1802,10 +1818,13 @@ PVRSRV_ERROR OSEnableTimer (IMG_HANDLE hTimer)
     psTimerCBData->bActive = IMG_TRUE;
 
     
-    ret = mod_timer(&psTimerCBData->sTimer, psTimerCBData->ui32Delay + jiffies);
-    if (ret == 1)
-        PVR_DPF((PVR_DBG_WARNING, "OSEnableTimer: enabling active timer"));
+    psTimerCBData->sTimer.expires = psTimerCBData->ui32Delay + jiffies;
+
     
+    ret = mod_timer(&psTimerCBData->sTimer, psTimerCBData->ui32Delay + jiffies);
+	if(ret == 1)
+		PVR_DPF((PVR_DBG_WARNING, "OSEnableTimer: enabling active timer"));
+
     return PVRSRV_OK;
 }
 
@@ -1820,7 +1839,7 @@ PVRSRV_ERROR OSDisableTimer (IMG_HANDLE hTimer)
     
     psTimerCBData->bActive = IMG_FALSE;
 
-    
+
     cancel_work_sync(&psTimerCBData->work);
     del_timer_sync(&psTimerCBData->sTimer);	
     
@@ -2409,3 +2428,26 @@ error_free:
     return PVRSRV_ERROR_GENERIC;
 }
 
+#if defined(SUPPORT_CPU_CACHED_BUFFERS)
+
+#if defined(__i386__)
+static void per_cpu_cache_flush(void *arg)
+{
+    PVR_UNREFERENCED_PARAMETER(arg);
+    wbinvd();
+}
+#endif 
+
+IMG_VOID OSFlushCPUCache(IMG_VOID)
+{
+#if defined(__arm__)
+    flush_cache_all();
+#elif defined(__i386__)
+    
+    on_each_cpu(per_cpu_cache_flush, NULL, 1);
+#else
+#error "Implement full CPU cache flush for this CPU!"
+#endif
+}
+
+#endif 

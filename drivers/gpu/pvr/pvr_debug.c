@@ -44,11 +44,15 @@
 #include "mutex.h"
 #include "linkage.h"
 
+#if defined(PVRSRV_NEED_PVR_DPF)
 
-IMG_UINT32	gPVRDebugLevel = DBGPRIV_WARNING;
+#define PVR_MAX_FILEPATH_LEN 256
+
+static IMG_UINT32 gPVRDebugLevel = DBGPRIV_WARNING;
+
+#endif 
 
 #define	PVR_MAX_MSG_LEN PVR_MAX_DEBUG_MESSAGE_LEN
-#define PVR_MAX_FILEPATH_LEN 256
 
 static IMG_CHAR gszBufferNonIRQ[PVR_MAX_MSG_LEN + 1];
 
@@ -57,9 +61,6 @@ static IMG_CHAR gszBufferIRQ[PVR_MAX_MSG_LEN + 1];
 static PVRSRV_LINUX_MUTEX gsDebugMutexNonIRQ;
 
 static spinlock_t gsDebugLockIRQ = SPIN_LOCK_UNLOCKED;
-
-IMG_CHAR szFileNameRewrite[PVR_MAX_FILEPATH_LEN];
-
 
 #define	USE_SPIN_LOCK (in_interrupt() || !preemptible())
 
@@ -118,25 +119,12 @@ static IMG_BOOL VBAppend(IMG_CHAR *pszBuf, IMG_UINT32 ui32BufSiz, const IMG_CHAR
 	return (i32Len < 0 || i32Len >= ui32Space);
 }
 
-#if defined(CONFIG_SGX_RELEASE_LOGGING) || defined(DEBUG) || defined(TIMING)
-static IMG_BOOL BAppend(IMG_CHAR *pszBuf, IMG_UINT32 ui32BufSiz, const IMG_CHAR *pszFormat, ...)
+IMG_VOID PVRDPFInit(IMG_VOID)
 {
-		va_list VArgs;
-		IMG_BOOL bTrunc;
-
-		va_start (VArgs, pszFormat);
-		
-		bTrunc = VBAppend(pszBuf, ui32BufSiz, pszFormat, VArgs);
-
-		va_end (VArgs);
-
-		return bTrunc;
+    LinuxInitMutex(&gsDebugMutexNonIRQ);
 }
-#endif
 
-IMG_VOID PVRSRVReleasePrintf(
-						const IMG_CHAR *pszFormat,
-						...)
+IMG_VOID PVRSRVReleasePrintf(const IMG_CHAR *pszFormat, ...)
 {
 	va_list vaArgs;
 	unsigned long ulLockFlags = 0;
@@ -164,7 +152,65 @@ IMG_VOID PVRSRVReleasePrintf(
 
 }
 
-#if defined(CONFIG_SGX_RELEASE_LOGGING) || defined(DEBUG) || defined(TIMING)
+#if defined(PVRSRV_NEED_PVR_ASSERT)
+
+IMG_VOID PVRSRVDebugAssertFail(const IMG_CHAR* pszFile, IMG_UINT32 uLine)
+{
+	PVRSRVDebugPrintf(DBGPRIV_FATAL, pszFile, uLine, "Debug assertion failed!");
+	BUG();
+}
+
+#endif 
+
+#if defined(PVRSRV_NEED_PVR_TRACE)
+
+IMG_VOID PVRSRVTrace(const IMG_CHAR* pszFormat, ...)
+{
+	va_list VArgs;
+	unsigned long ulLockFlags = 0;
+	IMG_CHAR *pszBuf;
+	IMG_UINT32 ui32BufSiz;
+
+	SelectBuffer(&pszBuf, &ui32BufSiz);
+
+	va_start(VArgs, pszFormat);
+
+	GetBufferLock(&ulLockFlags);
+
+	strncpy(pszBuf, "PVR: ", (ui32BufSiz -1));
+
+	if (VBAppend(pszBuf, ui32BufSiz, pszFormat, VArgs))
+	{
+		printk(KERN_INFO "PVR_K:(Message Truncated): %s\n", pszBuf);
+	}
+	else
+	{
+		printk(KERN_INFO "%s\n", pszBuf);
+	}
+	
+	ReleaseBufferLock(ulLockFlags);
+
+	va_end(VArgs);
+}
+
+#endif 
+
+#if defined(PVRSRV_NEED_PVR_DPF)
+
+static IMG_BOOL BAppend(IMG_CHAR *pszBuf, IMG_UINT32 ui32BufSiz, const IMG_CHAR *pszFormat, ...)
+{
+		va_list VArgs;
+		IMG_BOOL bTrunc;
+
+		va_start (VArgs, pszFormat);
+		
+		bTrunc = VBAppend(pszBuf, ui32BufSiz, pszFormat, VArgs);
+
+		va_end (VArgs);
+
+		return bTrunc;
+}
+
 IMG_VOID PVRSRVDebugPrintf	(
 						IMG_UINT32	ui32DebugLevel,
 						const IMG_CHAR*	pszFullFileName,
@@ -176,66 +222,6 @@ IMG_VOID PVRSRVDebugPrintf	(
 	IMG_BOOL bTrace, bDebug;
 	const IMG_CHAR *pszFileName = pszFullFileName;	
 	IMG_CHAR *pszLeafName;	
-
-#ifdef DEBUG_LOG_PATH_TRUNCATE 
-	IMG_CHAR* pszTruncIter;
-	IMG_CHAR* pszTruncBackInter;
-	
-	
-	pszFileName = pszFullFileName + strlen(DEBUG_LOG_PATH_TRUNCATE)+1;
-  
-	
-	strncpy(szFileNameRewrite, pszFileName,PVR_MAX_FILEPATH_LEN);
-
-	if(strlen(szFileNameRewrite) == PVR_MAX_FILEPATH_LEN-1) {
-		IMG_CHAR szTruncateMassage[] = "FILENAME TRUNCATED";
-		strcpy(szFileNameRewrite + (PVR_MAX_FILEPATH_LEN - 1 - strlen(szTruncateMassage)), szTruncateMassage);
-	}
-
-	pszTruncIter = szFileNameRewrite;
-	while(*pszTruncIter++ != 0) 
-	{
-		IMG_CHAR* pszNextStartPoint;
-		
-		if(
-		   !( ( *pszTruncIter == '/' && (pszTruncIter-4 >= szFileNameRewrite) ) && 
-			 ( *(pszTruncIter-1) == '.') &&
-			 ( *(pszTruncIter-2) == '.') &&
-			 ( *(pszTruncIter-3) == '/') )	
-		   ) continue;
-  
-		
-		pszTruncBackInter = pszTruncIter - 3;
-		while(*(--pszTruncBackInter) != '/') 
-		{
-			if(pszTruncBackInter <= szFileNameRewrite) break;
-		}
-		pszNextStartPoint = pszTruncBackInter;
-
-		
-		while(*pszTruncIter != 0) 
-		{
-			*pszTruncBackInter++ = *pszTruncIter++;
-		}
-		*pszTruncBackInter = 0;
-
-		
-		pszTruncIter = pszNextStartPoint;
-	}
-
-	pszFileName = szFileNameRewrite;
-	
-	if(*pszFileName == '/') pszFileName++;
-#endif
-
-#if !defined(__sh__)
-	pszLeafName = (IMG_CHAR *)strrchr (pszFileName, '\\');
-	
-	if (pszLeafName)
-	{
-		pszFileName = pszLeafName;
-	} 
-#endif 
 		
 	bTrace = gPVRDebugLevel & ui32DebugLevel & DBGPRIV_CALLTRACE;
 	bDebug = ((gPVRDebugLevel & DBGPRIV_ALLLEVELS) >= ui32DebugLevel);
@@ -304,6 +290,69 @@ IMG_VOID PVRSRVDebugPrintf	(
 			
 			if (!bTrace)
 			{
+#ifdef DEBUG_LOG_PATH_TRUNCATE
+				
+				static IMG_CHAR szFileNameRewrite[PVR_MAX_FILEPATH_LEN];
+
+   				IMG_CHAR* pszTruncIter;
+				IMG_CHAR* pszTruncBackInter;
+	
+				
+				pszFileName = pszFullFileName + strlen(DEBUG_LOG_PATH_TRUNCATE)+1;
+  
+				
+				strncpy(szFileNameRewrite, pszFileName,PVR_MAX_FILEPATH_LEN);
+
+				if(strlen(szFileNameRewrite) == PVR_MAX_FILEPATH_LEN-1) {
+					IMG_CHAR szTruncateMassage[] = "FILENAME TRUNCATED";
+					strcpy(szFileNameRewrite + (PVR_MAX_FILEPATH_LEN - 1 - strlen(szTruncateMassage)), szTruncateMassage);
+				}
+
+				pszTruncIter = szFileNameRewrite;
+				while(*pszTruncIter++ != 0) 
+				{
+					IMG_CHAR* pszNextStartPoint;
+					
+					if(
+					   !( ( *pszTruncIter == '/' && (pszTruncIter-4 >= szFileNameRewrite) ) && 
+						 ( *(pszTruncIter-1) == '.') &&
+						 ( *(pszTruncIter-2) == '.') &&
+						 ( *(pszTruncIter-3) == '/') )	
+					   ) continue;
+  
+					
+					pszTruncBackInter = pszTruncIter - 3;
+					while(*(--pszTruncBackInter) != '/') 
+					{
+						if(pszTruncBackInter <= szFileNameRewrite) break;
+					}
+					pszNextStartPoint = pszTruncBackInter;
+
+					
+					while(*pszTruncIter != 0) 
+					{
+						*pszTruncBackInter++ = *pszTruncIter++;
+					}
+					*pszTruncBackInter = 0;
+
+					
+					pszTruncIter = pszNextStartPoint;
+				}
+
+				pszFileName = szFileNameRewrite;
+				
+				if(*pszFileName == '/') pszFileName++;
+#endif
+
+#if !defined(__sh__)
+				pszLeafName = (IMG_CHAR *)strrchr (pszFileName, '\\');
+	
+				if (pszLeafName)
+				{
+					pszFileName = pszLeafName;
+		       	} 
+#endif 
+
 				if (BAppend(pszBuf, ui32BufSiz, " [%lu, %s]", ui32Line, pszFileName))
 				{
 					printk(KERN_INFO "PVR_K:(Message Truncated): %s\n", pszBuf);
@@ -325,41 +374,9 @@ IMG_VOID PVRSRVDebugPrintf	(
 	}
 }
 
-IMG_VOID PVRSRVDebugAssertFail(const IMG_CHAR* pszFile, IMG_UINT32 uLine)
-{
-	PVRSRVDebugPrintf(DBGPRIV_FATAL, pszFile, uLine, "Debug assertion failed!");
-	BUG();
-}
+#endif 
 
-IMG_VOID PVRSRVTrace(const IMG_CHAR* pszFormat, ...)
-{
-	va_list VArgs;
-	unsigned long ulLockFlags = 0;
-	IMG_CHAR *pszBuf;
-	IMG_UINT32 ui32BufSiz;
-
-	SelectBuffer(&pszBuf, &ui32BufSiz);
-
-	va_start(VArgs, pszFormat);
-
-	GetBufferLock(&ulLockFlags);
-
-	strncpy(pszBuf, "PVR: ", (ui32BufSiz -1));
-
-	if (VBAppend(pszBuf, ui32BufSiz, pszFormat, VArgs))
-	{
-		printk(KERN_INFO "PVR_K:(Message Truncated): %s\n", pszBuf);
-	}
-	else
-	{
-		printk(KERN_INFO "%s\n", pszBuf);
-	}
-	
-	ReleaseBufferLock(ulLockFlags);
-
-	va_end(VArgs);
-}
-
+#if defined(DEBUG)
 
 IMG_VOID PVRDebugSetLevel(IMG_UINT32 uDebugLevel)
 {
@@ -407,11 +424,3 @@ IMG_INT PVRDebugProcGetLevel(IMG_CHAR *page, IMG_CHAR **start, off_t off, IMG_IN
 #endif 
 
 #endif 
-
-IMG_VOID
-PVRDPFInit(IMG_VOID)
-{
-    LinuxInitMutex(&gsDebugMutexNonIRQ);
-}
-
-
