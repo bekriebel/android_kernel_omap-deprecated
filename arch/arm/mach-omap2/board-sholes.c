@@ -110,19 +110,15 @@ static char device_serial[MAX_USB_SERIAL_NUM];
 static struct omap_opp sholes_mpu_rate_table[] = {
 	{0, 0, 0},
 	/*OPP1*/
-	{S125M, VDD1_OPP1, 0x20},
+	{S250M, VDD1_OPP1, 0x27},
 	/*OPP2*/
-	{S250M, VDD1_OPP2, 0x27},
+	{S550M, VDD1_OPP2, 0x38},
 	/*OPP3*/
-	{S500M, VDD1_OPP3, 0x32},
-	/*OPP4*/
-	{S550M, VDD1_OPP4, 0x38},
+	{S600M, VDD1_OPP3, 0x3E},
+        /*OPP4*/
+        {S800M, VDD1_OPP4, 0x3E},
 	/*OPP5*/
-	{S600M, VDD1_OPP5, 0x3E},
-        /*OPP6*/
-        {S800M, VDD1_OPP6, 0x3E},
-	/*OPP7*/
-        {S1000M, VDD1_OPP7, 0x3E},
+        {S1000M, VDD1_OPP5, 0x3E},
 };
 
 #define S80M 80250000
