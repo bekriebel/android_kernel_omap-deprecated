@@ -4,6 +4,8 @@
 #include <mach/omap-pm.h>
 
 /* MPU speeds */
+#define S1000M	1000000000
+#define S800M	800000000
 #define S600M   600000000
 #define S550M   550000000
 #define S500M   500000000
