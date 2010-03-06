@@ -52,7 +52,7 @@
 #include <mach/control.h>
 #include <mach/hdq.h>
 #include <mach/system.h>
-#include <linux/usb/android.h>
+#include <linux/usb/android_composite.h>
 #include <linux/wakelock.h>
 
 #include "cm-regbits-34xx.h"
@@ -100,6 +100,8 @@
 #define SHOLES_VENDOR_ID		0x22B8
 #define SHOLES_PRODUCT_ID		0x41D9
 #define SHOLES_ADB_PRODUCT_ID		0x41DB
+#define SHOLES_RNDIS_PRODUCT_ID		0x41E4
+#define SHOLES_RNDIS_ADB_PRODUCT_ID		0x41E5
 #define FACTORY_PRODUCT_ID		0x41D4
 #define FACTORY_ADB_PRODUCT_ID		0x41D4
 
@@ -172,12 +174,104 @@ int __init board_boot_mode_init(char *s)
 }
 __setup("androidboot.mode=", board_boot_mode_init);
 
+static char *usb_functions_ums[] = {
+	"usb_mass_storage",
+};
 
+static char *usb_functions_ums_adb[] = {
+	"usb_mass_storage",
+	"adb",
+};
 
+static char *usb_functions_rndis[] = {
+	"rndis",
+};
+
+static char *usb_functions_rndis_adb[] = {
+	"rndis",
+	"adb",
+};
+
+static char *usb_functions_all[] = {
+#ifdef CONFIG_USB_ANDROID_RNDIS
+	"rndis",
+#endif
+	"usb_mass_storage",
+	"adb",
+#ifdef CONFIG_USB_ANDROID_ACM
+	"acm",
+#endif
+};
+
+static struct android_usb_product usb_products[] = {
+	{
+		.product_id	= SHOLES_PRODUCT_ID,
+		.num_functions	= ARRAY_SIZE(usb_functions_ums),
+		.functions	= usb_functions_ums,
+	},
+	{
+		.product_id	= SHOLES_ADB_PRODUCT_ID,
+		.num_functions	= ARRAY_SIZE(usb_functions_ums_adb),
+		.functions	= usb_functions_ums_adb,
+	},
+	{
+		.product_id	= SHOLES_RNDIS_PRODUCT_ID,
+		.num_functions	= ARRAY_SIZE(usb_functions_rndis),
+		.functions	= usb_functions_rndis,
+	},
+	{
+		.product_id	= SHOLES_RNDIS_ADB_PRODUCT_ID,
+		.num_functions	= ARRAY_SIZE(usb_functions_rndis_adb),
+		.functions	= usb_functions_rndis_adb,
+	},
+};
+
+static char *factory_usb_functions[] = {
+	"usbnet"
+};
+
+static char *factory_usb_functions_adb[] = {
+	"usbnet",
+	"adb"
+};
+
+static struct android_usb_product factory_usb_products[] = {
+	{
+		.product_id	= FACTORY_PRODUCT_ID,
+		.num_functions	= ARRAY_SIZE(factory_usb_functions),
+		.functions	= factory_usb_functions,
+	},
+	{
+		.product_id	= FACTORY_ADB_PRODUCT_ID,
+		.num_functions	= ARRAY_SIZE(factory_usb_functions_adb),
+		.functions	= factory_usb_functions_adb,
+	},
+};
+
+/* standard android USB platform data */
 static struct android_usb_platform_data andusb_plat = {
+	.vendor_id			= SHOLES_VENDOR_ID,
+	.product_id			= SHOLES_PRODUCT_ID,
 	.manufacturer_name	= "Motorola",
 	.product_name		= "Motorola A855",
 	.serial_number		= device_serial,
+	.num_products = ARRAY_SIZE(usb_products),
+	.products = usb_products,
+	.num_functions = ARRAY_SIZE(usb_functions_all),
+	.functions = usb_functions_all,
+};
+
+/* android USB platform data for factory test mode*/
+static struct android_usb_platform_data andusb_plat_factory = {
+	.vendor_id			= SHOLES_VENDOR_ID,
+	.product_id			= FACTORY_PRODUCT_ID,
+	.manufacturer_name	= "Motorola",
+	.product_name		= "Motorola A855",
+	.serial_number		= device_serial,
+	.num_products = ARRAY_SIZE(factory_usb_products),
+	.products = factory_usb_products,
+	.num_functions = ARRAY_SIZE(factory_usb_functions_adb),
+	.functions = factory_usb_functions_adb,
 };
 
 static struct platform_device androidusb_device = {
@@ -238,21 +332,10 @@ static void sholes_gadget_init(void)
 
 	snprintf(device_serial, MAX_USB_SERIAL_NUM, "%08X%08X", val[1], val[0]);
 
+	/* use different USB configuration when in factory test mode */
 	if (!strcmp(boot_mode, "factorycable"))
-		andusb_plat.factory_enabled = 1;
-	else
-		andusb_plat.factory_enabled = 0;
+		androidusb_device.dev.platform_data = &andusb_plat_factory;
 
-	andusb_plat.vendor_id = SHOLES_VENDOR_ID;
-
-	/* check powerup reason - To be added once kernel support is available*/
-	if (andusb_plat.factory_enabled) {
-		andusb_plat.product_id = FACTORY_PRODUCT_ID;
-		andusb_plat.adb_product_id = FACTORY_ADB_PRODUCT_ID;
-	} else {
-		andusb_plat.product_id = SHOLES_PRODUCT_ID;
-		andusb_plat.adb_product_id = SHOLES_ADB_PRODUCT_ID;
-	}
 	platform_device_register(&androidusb_device);
 	platform_device_register(&usb_mass_storage_device);
 	platform_driver_register(&cpcap_usb_connected_driver);
@@ -274,6 +357,7 @@ static void sholes_audio_init(void)
 	gpio_direction_output(SHOLES_AUDIO_PATH_GPIO, 1);
 	omap_cfg_reg(AE5_34XX_GPIO143);
 }
+
 
 static struct omap_uart_config sholes_uart_config __initdata = {
 	.enabled_uarts = ((1 << 0) | (1 << 1) | (1 << 2)),
