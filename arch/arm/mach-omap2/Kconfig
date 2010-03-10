@@ -164,6 +164,60 @@ config MACH_SHOLES_UMTS
         bool "Motorola sholes umts"
         depends on MACH_SHOLES
 
+config SHOLES_FREQ_1
+       int "Freq slot 1 in Hz"
+       depends on MACH_SHOLES
+       default "125000000"
+
+config SHOLES_FREQ_2
+       int "Freq slot 2 in Hz"
+       depends on MACH_SHOLES
+       default "250000000"
+
+config SHOLES_FREQ_3
+       int "Freq slot 3 in Hz"
+       depends on MACH_SHOLES
+       default "500000000"
+
+config SHOLES_FREQ_4
+       int "Freq slot 4 in Hz"
+       depends on MACH_SHOLES
+       default "550000000"
+
+config SHOLES_FREQ_5
+       int "Freq slot 5 in Hz"
+       depends on MACH_SHOLES
+       default "600000000"
+
+config SHOLES_VSEL_1
+       hex "vsel slot 1"
+       depends on MACH_SHOLES
+       default 0x20
+
+config SHOLES_VSEL_2
+       hex "vsel slot 2"
+       depends on MACH_SHOLES
+       default 0x27
+
+config SHOLES_VSEL_3
+       hex "vsel slot 3"
+       depends on MACH_SHOLES
+       default 0x32
+
+config SHOLES_VSEL_4
+       hex "vsel slot 4"
+       depends on MACH_SHOLES
+       default 0x38
+
+config SHOLES_VSEL_5
+       hex "vsel slot 5"
+       depends on MACH_SHOLES
+       default 0x3E
+
+config COMMENTS
+        string "Comments"
+        default ""
+
 config MACH_OVERO
 	bool "Gumstix Overo board"
 	depends on ARCH_OMAP3 && ARCH_OMAP34XX
