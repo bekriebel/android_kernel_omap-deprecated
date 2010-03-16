@@ -44,6 +44,7 @@
 #include <linux/uaccess.h>
 #ifdef CONFIG_OMAP_WATCHDOG_AUTOPET
 #include <linux/timer.h>
+#include <linux/workqueue.h>
 #endif
 #include <mach/hardware.h>
 #include <mach/prcm.h>
@@ -69,6 +70,7 @@ struct omap_wdt_dev {
 	struct resource *mem;
 	struct miscdevice omap_wdt_miscdev;
 #ifdef CONFIG_OMAP_WATCHDOG_AUTOPET
+	struct work_struct work;
 	struct timer_list autopet_timer;
 	unsigned long  jiffies_start;
 	unsigned long  jiffies_exp;
@@ -99,7 +101,9 @@ static int omap_wdt_panic(struct notifier_block *this, unsigned long event,
 	unsigned long flags;
 
 	spin_lock_irqsave(&wdt_lock, flags);
-
+#ifdef CONFIG_OMAP_WATCHDOG_AUTOPET
+	del_timer(&wdev->autopet_timer);
+#endif
 	if (wdev && wdev->omap_wdt_users > 0)
 		omap_wdt_ping(wdev);
 
@@ -305,8 +309,14 @@ static const struct file_operations omap_wdt_fops = {
 #ifdef CONFIG_OMAP_WATCHDOG_AUTOPET
 static void autopet_handler(unsigned long data)
 {
-	unsigned long flags;
 	struct omap_wdt_dev *wdev = (struct omap_wdt_dev *) data;
+	schedule_work(&wdev->work);
+}
+
+static void omap_wdt_work_func(struct work_struct *work)
+{
+	unsigned long flags;
+	struct omap_wdt_dev *wdev = container_of(work, struct omap_wdt_dev, work);
 
 	spin_lock_irqsave(&wdt_lock, flags);
 	omap_wdt_ping(wdev);
@@ -419,6 +429,7 @@ static int __init omap_wdt_probe(struct platform_device *pdev)
 	omap_wdt_dev = pdev;
 
 #ifdef CONFIG_OMAP_WATCHDOG_AUTOPET
+	INIT_WORK(&wdev->work, omap_wdt_work_func);
 	setup_timer(&wdev->autopet_timer, autopet_handler,
 		    (unsigned long) wdev);
 	test_and_set_bit(1, (unsigned long *)&(wdev->omap_wdt_users));
@@ -570,7 +581,7 @@ module_exit(omap_wdt_exit);
 
 static int __init omap_wdt_panic_init(void)
 {
-	atomic_notifier_chain_register(&panic_notifier_list, &panic_blk);
+	return atomic_notifier_chain_register(&panic_notifier_list, &panic_blk);
 }
 
 arch_initcall(omap_wdt_panic_init);
