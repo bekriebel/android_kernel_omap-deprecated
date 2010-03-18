@@ -33,6 +33,8 @@
 #include <mach/mmc.h>
 #include <mach/cpu.h>
 
+#define CONFIG_MMC_DEBUG
+
 /* OMAP HSMMC Host Controller Registers */
 #define OMAP_HSMMC_SYSCONFIG	0x0010
 #define OMAP_HSMMC_CON		0x002C
@@ -528,6 +530,9 @@ static irqreturn_t mmc_omap_irq(int irq, void *dev_id)
 		}
 		if ((status & DATA_TIMEOUT) ||
 			(status & DATA_CRC)) {
+			dev_err(mmc_dev(host->mmc), "Data %s err (%p)\n",
+				(status & DATA_CRC) ? "crc" : "timeout",
+				host->data);
 			if (host->data) {
 				if (status & DATA_TIMEOUT)
 					mmc_dma_cleanup(host, -ETIMEDOUT);
