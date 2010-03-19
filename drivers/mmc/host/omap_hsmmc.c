@@ -409,6 +409,12 @@ omap_hsmmc_inact_timer(unsigned long data)
 {
 	struct mmc_omap_host *host = (struct mmc_omap_host *) data;
 
+	if (host->mrq) {
+		dev_warn(mmc_dev(host->mmc),
+			"Inact timer fired while busy! - Resetting timer\n");
+		mod_timer(&host->inact_timer, jiffies + msecs_to_jiffies(1000));
+		return;
+	}
 	omap_hsmmc_disable_clks(host);
 }
 
@@ -678,9 +684,17 @@ static void mmc_omap_dma_cb(int lch, u16 ch_status, void *data)
 	omap_free_dma(host->dma_ch);
 	host->dma_ch = -1;
 	if (ch_status & OMAP2_DMA_TRANS_ERR_IRQ) {
-		dev_err(mmc_dev(host->mmc),
-			"DMA trans error mmc status 0x%.8x\n",
-			OMAP_HSMMC_READ(host->base, STAT));
+		unsigned long flags;
+		spin_lock_irqsave(&host->clk_lock, flags);
+		if (host->clks_enabled) {
+			dev_err(mmc_dev(host->mmc),
+				"DMA trans error mmc status 0x%.8x\n",
+				OMAP_HSMMC_READ(host->base, STAT));
+		} else {
+			dev_err(mmc_dev(host->mmc),
+				"DMA trans error (mmc clocks off)\n");
+		}
+		spin_unlock_irqrestore(&host->clk_lock, flags);
 	}
 	/*
 	 * DMA Callback: run in interrupt context.
