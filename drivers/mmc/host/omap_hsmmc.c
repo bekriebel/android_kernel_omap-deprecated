@@ -456,7 +456,7 @@ static void mmc_omap_report_irq(struct mmc_omap_host *host, u32 status)
 			buf += len;
 		}
 
-	dev_dbg(mmc_dev(host->mmc), "%s\n", res);
+	dev_err(mmc_dev(host->mmc), "%s\n", res);
 }
 #endif  /* CONFIG_MMC_DEBUG */
 
@@ -677,6 +677,11 @@ static void mmc_omap_dma_cb(int lch, u16 ch_status, void *data)
 
 	omap_free_dma(host->dma_ch);
 	host->dma_ch = -1;
+	if (ch_status & OMAP2_DMA_TRANS_ERR_IRQ) {
+		dev_err(mmc_dev(host->mmc),
+			"DMA trans error mmc status 0x%.8x\n",
+			OMAP_HSMMC_READ(host->base, STAT));
+	}
 	/*
 	 * DMA Callback: run in interrupt context.
 	 * mutex_unlock will through a kernel warning if used.
