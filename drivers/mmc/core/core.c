@@ -201,8 +201,13 @@ void mmc_wait_for_req(struct mmc_host *host, struct mmc_request *mrq)
 	mrq->done = mmc_wait_done;
 
 	mmc_start_request(host, mrq);
-
-	wait_for_completion(&complete);
+	if (!wait_for_completion_timeout(&complete, HZ * 10)) {
+		printk(KERN_EMERG "%s: Timed out waiting for completion\n",
+		       mmc_hostname(host));
+		printk(KERN_EMERG "%s: cmd 0x%x\n", mmc_hostname(host),
+		       mrq->cmd->opcode);
+		panic("Timed out waiting for mmc completion");
+	}
 }
 
 EXPORT_SYMBOL(mmc_wait_for_req);
