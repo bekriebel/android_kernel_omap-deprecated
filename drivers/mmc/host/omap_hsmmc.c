@@ -407,12 +407,6 @@ omap_hsmmc_inact_timer(unsigned long data)
 {
 	struct mmc_omap_host *host = (struct mmc_omap_host *) data;
 
-	if (host->mrq) {
-		dev_warn(mmc_dev(host->mmc),
-			"Inact timer fired while busy! - Resetting timer\n");
-		mod_timer(&host->inact_timer, jiffies + msecs_to_jiffies(1000));
-		return;
-	}
 	omap_hsmmc_disable_clks(host);
 }
 
