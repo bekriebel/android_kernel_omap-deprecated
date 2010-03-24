@@ -164,6 +164,10 @@ config MACH_SHOLES_UMTS
         bool "Motorola sholes umts"
         depends on MACH_SHOLES
 
+config SHOLES_OPP7
+	bool "Increase FREQ Slots to 7"
+	depends on MACH_SHOLES
+	
 config SHOLES_FREQ_1
        int "Freq slot 1 in Hz"
        depends on MACH_SHOLES
@@ -189,6 +193,16 @@ config SHOLES_FREQ_5
        depends on MACH_SHOLES
        default "600000000"
 
+config SHOLES_FREQ_6
+       int "Freq slot 6 in Hz"
+       depends on SHOLES_OPP7
+       default "800000000"
+
+config SHOLES_FREQ_7
+       int "Freq slot 7 in Hz"
+       depends on SHOLES_OPP7
+       default "1000000000"
+
 config SHOLES_VSEL_1
        hex "vsel slot 1"
        depends on MACH_SHOLES
@@ -213,6 +227,16 @@ config SHOLES_VSEL_5
        hex "vsel slot 5"
        depends on MACH_SHOLES
        default 0x3E
+
+config SHOLES_VSEL_6
+       hex "vsel slot 6"
+       depends on SHOLES_OPP7
+       default 0x3E
+
+config SHOLES_VSEL_7
+       hex "vsel slot 7"
+       depends on SHOLES_OPP7
+       default 0x3F
 
 config COMMENTS
         string "Comments"

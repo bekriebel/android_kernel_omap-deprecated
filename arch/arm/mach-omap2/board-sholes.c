@@ -121,6 +121,12 @@ static struct omap_opp sholes_mpu_rate_table[] = {
 	{CONFIG_SHOLES_FREQ_4, VDD1_OPP4, CONFIG_SHOLES_VSEL_4},
 	/*OPP5*/
 	{CONFIG_SHOLES_FREQ_5, VDD1_OPP5, CONFIG_SHOLES_VSEL_5},
+	#if defined(CONFIG_SHOLES_OPP7)
+        /*OPP6*/
+        {CONFIG_SHOLES_FREQ_6, VDD1_OPP6, CONFIG_SHOLES_VSEL_6},
+        /*OPP7*/
+        {CONFIG_SHOLES_FREQ_7, VDD1_OPP7, CONFIG_SHOLES_VSEL_7},
+	#endif
 };
 
 #define S80M 80250000
