@@ -83,7 +83,8 @@ obj-$(CONFIG_MACH_SHOLES)		+= board-sholes.o \
 					   board-sholes-hsmmc.o \
 					   board-sholes-keypad.o \
 					   board-sholes-wifi.o \
-					   board-sholes-mmcprobe.o 
+					   board-sholes-mmcprobe.o \
+                                           board-sholes-usbnet.o
 
 obj-$(CONFIG_MACH_OMAP_APOLLON)		+= board-apollon.o \
 					   board-apollon-mmc.o	\
