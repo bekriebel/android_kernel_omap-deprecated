@@ -19,7 +19,7 @@
 #include <linux/mutex.h>
 
 #include "ramzswap_ioctl.h"
-#include "sub-projects/allocators/xvmalloc-kmod/xvmalloc.h"
+#include "xvmalloc.h"
 
 /*
  * Some arbitrary value. This is just to catch
